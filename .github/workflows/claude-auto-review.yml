@@ -1,0 +1,109 @@
+name: Claude Auto Review
+
+# PR を Claude Opus 5.5 がレビューし、OK なら squash マージ、NG なら理由をコメントする。
+# レビュー手順は .claude/skills/pr-auto-review/SKILL.md（base ブランチ側）に従う。
+#
+# pull_request_target を使うので、ワークフローと skill は常に base ブランチ側のものが使われる。
+# PR 側でこのファイルや skill を書き換えても、その PR のレビューには反映されない。
+# PR のコードは ./pr に読み取り専用の目的でチェックアウトするだけで、決して実行しない。
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: claude-auto-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write       # squash マージ・ブランチ削除
+  pull-requests: write  # マージ・PR 情報取得
+  issues: write         # PR コメント投稿
+
+env:
+  CLAUDE_MODEL: claude-opus-5-5
+
+jobs:
+  review:
+    # draft は除外。フォークからの PR はシークレットを渡さないため対象外。
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Checkout base (trusted skill / config)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Checkout PR head into ./pr (read only, never executed)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run review with Claude
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          rm -f review-verdict.json
+          # PR のタイトル等はプロンプトに埋め込まない（プロンプトインジェクション対策）。
+          # Claude には読み取り系ツールと gh pr view/diff/comment だけを許可し、マージ権限は渡さない。
+          claude -p "$(cat <<EOF
+          リポジトリ ${GITHUB_REPOSITORY} の Pull Request #${PR_NUMBER}（head: ${HEAD_SHA}）をレビューしてください。
+          まず .claude/skills/pr-auto-review/SKILL.md を読み、その手順に厳密に従ってください。
+          PR の head は ./pr にチェックアウト済みです。コードは実行しないでください。
+          最後に必ず、作業ディレクトリ直下の review-verdict.json に判定を書き、gh pr comment で結果をコメントしてください。
+          EOF
+          )" \
+            --model "$CLAUDE_MODEL" \
+            --max-turns 60 \
+            --allowedTools "Read,Grep,Glob,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+
+      - name: Decide and merge
+        # Claude の実行が失敗しても「判定できなかった」とコメントするために実行する
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+
+          if [ ! -f review-verdict.json ] || ! verdict=$(jq -er '.verdict' review-verdict.json); then
+            gh pr comment "$PR_NUMBER" --body "$(printf '<!-- claude-auto-review -->\n## ⚠️ 自動レビュー: 判定できませんでした\n\n自動レビューが判定結果を出力しませんでした。人間による確認が必要です。\n\nログ: %s' "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")"
+            echo "::error::review-verdict.json が無いか不正です"
+            exit 1
+          fi
+
+          echo "verdict: $verdict"
+          jq . review-verdict.json
+
+          case "$verdict" in
+            approve)
+              # レビューした commit のままの時だけマージする（レビュー後に push されていたら失敗する）。
+              # リポジトリで auto-merge が有効なら必須チェックの完了を待つ。無効なら即時マージ。
+              if ! gh pr merge "$PR_NUMBER" --squash --delete-branch --auto --match-head-commit "$HEAD_SHA"; then
+                gh pr merge "$PR_NUMBER" --squash --delete-branch --match-head-commit "$HEAD_SHA"
+              fi
+              ;;
+            reject)
+              echo "::error::自動レビューで差し戻されました。理由は PR コメントを参照してください。"
+              exit 1
+              ;;
+            *)
+              echo "::error::不明な verdict: $verdict"
+              exit 1
+              ;;
+          esac
