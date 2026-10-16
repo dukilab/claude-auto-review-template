@@ -62,6 +62,14 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
           rm -f review-verdict.json
+          # ターミナルからコピーしたトークンに混ざりやすい改行・空白を取り除く
+          CLAUDE_CODE_OAUTH_TOKEN="$(printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN" | tr -d '[:space:]')"
+          export CLAUDE_CODE_OAUTH_TOKEN
+          case "$CLAUDE_CODE_OAUTH_TOKEN" in
+            sk-ant-oat*) ;;
+            "") echo "::error::シークレット CLAUDE_CODE_OAUTH_TOKEN が未登録です"; exit 1 ;;
+            *) echo "::error::CLAUDE_CODE_OAUTH_TOKEN が sk-ant-oat で始まっていません（長さ ${#CLAUDE_CODE_OAUTH_TOKEN} 文字）。claude setup-token の出力からトークン部分だけを登録してください"; exit 1 ;;
+          esac
           # PR のタイトル等はプロンプトに埋め込まない（プロンプトインジェクション対策）。
           # Claude には読み取り系ツールと gh pr view/diff/comment だけを許可し、マージ権限は渡さない。
           claude -p "$(cat <<EOF
