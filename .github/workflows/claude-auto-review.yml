@@ -30,11 +30,12 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
     steps:
       - name: Checkout base (trusted skill / config)
         uses: actions/checkout@v4
@@ -47,6 +48,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           path: pr
+          fetch-depth: 0  # base との差分をファイル単位で読むため
           persist-credentials: false
 
       - name: Setup Node.js
@@ -58,6 +60,7 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Run review with Claude
+        id: claude
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
@@ -67,25 +70,29 @@ jobs:
           export CLAUDE_CODE_OAUTH_TOKEN
           case "$CLAUDE_CODE_OAUTH_TOKEN" in
             sk-ant-oat*) ;;
-            "") echo "::error::シークレット CLAUDE_CODE_OAUTH_TOKEN が未登録です"; exit 1 ;;
+            "")
+              # 未登録のリポジトリでは失敗にもコメントにもせず、警告だけ残してスキップする
+              echo "::warning::シークレット CLAUDE_CODE_OAUTH_TOKEN が未登録のため自動レビューをスキップしました"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0 ;;
             *) echo "::error::CLAUDE_CODE_OAUTH_TOKEN が sk-ant-oat で始まっていません（長さ ${#CLAUDE_CODE_OAUTH_TOKEN} 文字）。claude setup-token の出力からトークン部分だけを登録してください"; exit 1 ;;
           esac
           # PR のタイトル等はプロンプトに埋め込まない（プロンプトインジェクション対策）。
-          # Claude には読み取り系ツールと gh pr view/diff/comment だけを許可し、マージ権限は渡さない。
+          # Claude には読み取り系ツールと gh pr view/diff/comment、./pr での git diff/log/show だけを許可し、マージ権限は渡さない。
           claude -p "$(cat <<EOF
-          リポジトリ ${GITHUB_REPOSITORY} の Pull Request #${PR_NUMBER}（head: ${HEAD_SHA}）をレビューしてください。
+          リポジトリ ${GITHUB_REPOSITORY} の Pull Request #${PR_NUMBER}（head: ${HEAD_SHA}、base: ${BASE_SHA}）をレビューしてください。
           まず .claude/skills/pr-auto-review/SKILL.md を読み、その手順に厳密に従ってください。
-          PR の head は ./pr にチェックアウト済みです。コードは実行しないでください。
+          PR の head は ./pr に履歴付きでチェックアウト済みです。BASE_SHA は ${BASE_SHA} です。差分が大きくても全ファイルを読み切ってから判定してください。コードは実行しないでください。
           最後に必ず、作業ディレクトリ直下の review-verdict.json に判定を書き、gh pr comment で結果をコメントしてください。
           EOF
           )" \
             --model "$CLAUDE_MODEL" \
-            --max-turns 60 \
-            --allowedTools "Read,Grep,Glob,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+            --max-turns 400 \
+            --allowedTools "Read,Grep,Glob,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(git -C pr diff:*),Bash(git -C pr log:*),Bash(git -C pr show:*)"
 
       - name: Decide and merge
         # Claude の実行が失敗しても「判定できなかった」とコメントするために実行する
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.claude.outputs.skip != 'true' }}
         run: |
           set -euo pipefail
 
