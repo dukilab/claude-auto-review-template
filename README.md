@@ -42,6 +42,14 @@ PR 作成者が Claude Code 自身（同じ GitHub アカウント）でも動�
    gh secret set CLAUDE_CODE_OAUTH_TOKEN
    ```
 
+   導入済みの全リポジトリにまとめて登録する場合（Windows PowerShell）:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\set-token-all.ps1
+   ```
+
+   トークンの入力を求められるので貼り付けます（画面には表示されません）。ワークフローが入っているリポジトリだけに登録します。
+
 4. **Actions の権限設定**: Settings → Actions → General → Workflow permissions を「Read and write permissions」にする
 5. （任意）Settings → General → Pull Requests の **Allow auto-merge** を ON にすると、他の必須チェック（CI 等）の完了を待ってからマージします。OFF の場合はレビュー OK の時点で即マージします。
 
