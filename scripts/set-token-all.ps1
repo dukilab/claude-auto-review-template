@@ -3,6 +3,7 @@
 # 使い方（Windows PowerShell）:
 #   powershell -ExecutionPolicy Bypass -File scripts\set-token-all.ps1                     # 導入済みの全リポジトリ
 #   powershell -ExecutionPolicy Bypass -File scripts\set-token-all.ps1 -Repo owner/name    # 指定したリポジトリだけ
+#   powershell -ExecutionPolicy Bypass -File scripts\set-token-all.ps1 -Repo owner/a,owner/b  # 複数指定（カンマ区切り）
 #   powershell -ExecutionPolicy Bypass -File scripts\set-token-all.ps1 -ResetToken         # 保存済みトークンを入れ直す
 #
 # トークンは初回だけ入力を求め、Windows のユーザー専用暗号化（DPAPI）で
@@ -32,8 +33,14 @@ function ConvertTo-PlainText([Security.SecureString]$secure) {
 $token = $null
 if ((Test-Path $storeFile) -and -not $ResetToken) {
     try {
-        $token = ConvertTo-PlainText (Import-Clixml $storeFile)
-        Write-Host "保存済みのトークンを使います。"
+        $token = ((ConvertTo-PlainText (Import-Clixml $storeFile)) -replace '\s', '')
+        if ($token.StartsWith("sk-ant-oat")) {
+            Write-Host "保存済みのトークンを使います。"
+        } else {
+            # 形式が不正なら保存済みトークンは使わず、入力し直してもらう
+            Write-Host "保存済みトークンの形式が不正です。入力し直してください。" -ForegroundColor Yellow
+            $token = $null
+        }
     } catch {
         Write-Host "保存済みトークンを読み込めませんでした。入力し直してください。" -ForegroundColor Yellow
         $token = $null
@@ -50,11 +57,6 @@ if (-not $token) {
     New-Item -ItemType Directory -Force $storeDir | Out-Null
     ConvertTo-SecureString $token -AsPlainText -Force | Export-Clixml $storeFile
     Write-Host "トークンを暗号化して保存しました。"
-}
-$token = ($token -replace '\s', '')
-if (-not $token.StartsWith("sk-ant-oat")) {
-    Write-Host "保存済みトークンの形式が不正です。-ResetToken を付けて実行し、入力し直してください。" -ForegroundColor Red
-    exit 1
 }
 
 # --- 対象リポジトリ ---
