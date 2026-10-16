@@ -21,7 +21,18 @@ PR 作成者が Claude Code 自身（同じ GitHub アカウント）でも動�
 3. Claude Code（`claude-opus-5-5`）が SKILL.md に従ってレビューし、`review-verdict.json` を書いて PR にコメント
 4. シェルステップが `review-verdict.json` を読み、`approve` なら `gh pr merge --squash`、`reject` ならジョブ失敗
 
-## 導入手順
+## 新しいリポジトリを作る場合
+
+このリポジトリは GitHub のテンプレートリポジトリです。新しいリポジトリは、このテンプレートから作ると最初から自動レビューが入った状態になります。
+
+```bash
+gh repo create <owner>/<name> --private --template sakadukigi/claude-auto-review-template --clone
+```
+
+作成後に、テンプレート由来の `README.md` をそのリポジトリ用に書き換え、`scripts/` を削除します。最後に `scripts\set-token-all.ps1 -Repo <owner>/<name>` でトークンを登録してください。
+Claude Code に作らせる場合は、ユーザー skill `github-new-repo` がこの手順を自動で行います。
+
+## 既存リポジトリへの導入手順
 
 1. **2 つのファイルを対象リポジトリの default ブランチにコピー**してコミット
    （`pull_request_target` は default ブランチ側のワークフローを使うため、default ブランチに入るまで動きません）
@@ -46,9 +57,11 @@ PR 作成者が Claude Code 自身（同じ GitHub アカウント）でも動�
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\set-token-all.ps1
+   # 1 つだけ登録する場合
+   powershell -ExecutionPolicy Bypass -File scripts\set-token-all.ps1 -Repo owner/name
    ```
 
-   トークンの入力を求められるので貼り付けます（画面には表示されません）。ワークフローが入っているリポジトリだけに登録します。
+   初回だけトークンの入力を求められます（画面には表示されません）。入力したトークンは Windows のユーザー専用暗号化（DPAPI）で `%APPDATA%\claude-auto-review\oauth-token.xml` に保存され、2 回目以降は入力なしで登録できます。トークンを作り直したときは `-ResetToken` を付けて実行します。ワークフローが入っているリポジトリだけに登録します。
 
 4. **Actions の権限設定**: Settings → Actions → General → Workflow permissions を「Read and write permissions」にする
 5. （任意）Settings → General → Pull Requests の **Allow auto-merge** を ON にすると、他の必須チェック（CI 等）の完了を待ってからマージします。OFF の場合はレビュー OK の時点で即マージします。
