@@ -1,6 +1,6 @@
 name: Claude Auto Review
 
-# PR を Claude Opus 5.5 がレビューし、OK なら squash マージ、NG なら理由をコメントする。
+# PR を Claude Opus 5.5 がレビューし、指摘ゼロなら squash マージ、改善提案や問題があれば理由をコメントする（マージしない）。
 # レビュー手順は .claude/skills/pr-auto-review/SKILL.md（base ブランチ側）に従う。
 #
 # pull_request_target を使うので、ワークフローと skill は常に base ブランチ側のものが使われる。
@@ -112,6 +112,10 @@ jobs:
               if ! gh pr merge "$PR_NUMBER" --squash --delete-branch --auto --match-head-commit "$HEAD_SHA"; then
                 gh pr merge "$PR_NUMBER" --squash --delete-branch --match-head-commit "$HEAD_SHA"
               fi
+              ;;
+            changes_suggested)
+              echo "::error::自動レビューで改善提案がありました。提案を反映して push すると再レビューされます。"
+              exit 1
               ;;
             reject)
               echo "::error::自動レビューで差し戻されました。理由は PR コメントを参照してください。"

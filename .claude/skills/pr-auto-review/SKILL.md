@@ -1,12 +1,13 @@
 ---
 name: pr-auto-review
-description: GitHub の Pull Request をレビューして可否（approve / reject）を判定し、結果を PR コメントに書く手順。PR の自動レビュー・マージ可否判定を行う時、`/pr-auto-review <PR番号>` と呼ばれた時、PR 作成者が Claude Code 自身（同じ GitHub アカウントや bot）の場合も含めて必ずこの手順に従う。
+description: GitHub の Pull Request をレビューして可否（approve / changes_suggested / reject）を判定し、結果を PR コメントに書く手順。PR の自動レビュー・マージ可否判定を行う時、`/pr-auto-review <PR番号>` と呼ばれた時、PR 作成者が Claude Code 自身（同じ GitHub アカウントや bot）の場合も含めて必ずこの手順に従う。
 ---
 
 # PR 自動レビュー
 
 PR を 1 件レビューし、**判定ファイル `review-verdict.json` の出力**と **PR コメントの投稿**を行う。
 マージはしない（マージは GitHub Actions のシェルステップが判定ファイルを見て行う）。
+**指摘がゼロの時だけ approve** になり自動マージされる。改善提案が 1 つでもあればマージせず、PR 作成者（多くは Claude Code）が提案に沿って直して再 push する運用である。
 
 ## 大原則
 
@@ -21,8 +22,11 @@ PR を 1 件レビューし、**判定ファイル `review-verdict.json` の出�
 
 ```bash
 gh pr view <N> --json number,title,body,author,baseRefName,headRefName,files,commits,additions,deletions
+gh pr view <N> --json comments
 gh pr diff <N>
 ```
+
+`comments` で、この PR に対する過去の自動レビュー（`<!-- claude-auto-review -->` で始まるコメント）を確認する。再レビューの場合は、前回の指摘が直っているかを必ず確認する。
 
 GitHub Actions 上では PR の head が `./pr/` に履歴付きでチェックアウトされている。差分の前後の文脈は `./pr/` 配下を Read / Grep で確認する（`./pr/` 外の `.claude/` 等は base ブランチ側の信頼できるファイル）。
 
@@ -66,11 +70,26 @@ GitHub Actions 上では PR の head が `./pr/` に履歴付きでチェック�
 | 一貫性 | PR タイトル・本文の説明と差分が一致しているか、無関係な変更の混入 |
 | 不要物 | デバッグ出力、コメントアウトされたコード、ビルド成果物、個人環境のファイル |
 
-severity は次の 3 段階。**`blocker` が 1 つでもあれば reject**、`major` は 2 つ以上、または 1 つでも影響が大きければ reject。`minor` だけなら approve し、コメントに改善提案として書く。
+severity は次の 3 段階。判定は次のとおり。
+
+| 指摘の内容 | verdict | 結果 |
+|---|---|---|
+| `blocker` または `major` が 1 つ以上 | `reject` | ❌ 差し戻し（マージしない） |
+| `minor` だけ | `changes_suggested` | 🔧 改善提案あり（マージしない） |
+| 指摘なし | `approve` | ✅ 承認（自動マージ） |
 
 - `blocker`: バグ・セキュリティ問題・データ破壊・ビルドが壊れる・上記「即 reject」条件
 - `major`: テスト不足、説明と差分の不一致、保守性を大きく損なう
 - `minor`: 命名・スタイル・軽微な改善
+
+#### 改善提案（minor）の出し方
+
+`minor` も 1 つあればマージが止まり、作成者が修正と再 push を行う。修正と再レビューが延々と続かないよう、次を守る。
+
+- **具体的で、直す価値がはっきりしているものだけ** を出す（可読性・保守性・堅牢性が実際に上がるもの）。好みの問題（書き方の流儀、別の正解がある命名など）は出さない
+- **PR の目的の範囲内** に限る。別機能の追加や大きな設計変更を求めない
+- **過去の自動レビューで出して対応済みの点を蒸し返さない。** 前回の提案と矛盾する提案もしない
+- 前回の指摘がすべて直っていて、新しい差分に問題が無ければ approve する。前回見落とした軽微な点を毎回新しく探して出し続けない
 
 ### 5. 判定ファイルを書く
 
@@ -93,8 +112,8 @@ severity は次の 3 段階。**`blocker` が 1 つでもあれば reject**、`m
 }
 ```
 
-- `verdict` は `"approve"` か `"reject"` のみ
-- approve でも `minor` の指摘は `reasons` に入れてよい
+- `verdict` は `"approve"` / `"changes_suggested"` / `"reject"` のいずれか
+- `approve` の時は `reasons` を空配列にする（指摘があるなら approve にしない）
 - `line` が特定できない場合は `null`
 
 ### 6. PR コメントを投稿する
@@ -110,10 +129,24 @@ severity は次の 3 段階。**`blocker` が 1 つでもあれば reject**、`m
 ## ✅ 自動レビュー: 承認
 
 <summary>
+```
 
-（minor の指摘があれば）
-### 改善提案（マージは妨げません）
-- `file:line` — detail → fix
+**changes_suggested の場合:**
+
+```markdown
+<!-- claude-auto-review -->
+## 🔧 自動レビュー: 改善提案あり（マージ保留）
+
+<summary>
+
+### 改善提案
+1. `src/foo.ts:42`
+   - 内容: detail
+   - 修正方針: fix
+2. ...
+
+### 再レビューについて
+提案を反映してこのブランチに push すると自動で再レビューされます。指摘がなくなればマージされます。
 ```
 
 **reject の場合:**
@@ -134,10 +167,10 @@ severity は次の 3 段階。**`blocker` が 1 つでもあれば reject**、`m
 修正をこのブランチに push すると自動で再レビューされます。
 ```
 
-Claude 作成 PR の場合は reject コメントの末尾に次を加える。
+Claude 作成 PR の場合は reject / changes_suggested コメントの末尾に次を加える。
 
 ```markdown
-> この PR は Claude Code によって作成されたと判定しました。上記「修正が必要な点」をすべて解消して同じブランチに push してください。
+> この PR は Claude Code によって作成されたと判定しました。上記の「修正が必要な点」「改善提案」をすべて反映して同じブランチに push してください。
 ```
 
 ## ローカルで使う場合
