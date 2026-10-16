@@ -25,6 +25,7 @@ PR 作成者が Claude Code 自身（同じ GitHub アカウント）でも動�
 
 1. **2 つのファイルを対象リポジトリの default ブランチにコピー**してコミット
    （`pull_request_target` は default ブランチ側のワークフローを使うため、default ブランチに入るまで動きません）
+   シークレットが未登録の間は、ワークフローは警告を出してスキップします（失敗にもコメントにもなりません）。
 2. **OAuth トークンを作成**（Claude Pro/Max サブスクを使用）
 
    ```bash
@@ -52,7 +53,8 @@ PR 作成者が Claude Code 自身（同じ GitHub アカウント）でも動�
 ## 安全のための設計
 
 - **ワークフローと skill は常に base ブランチ側を使う**ので、PR 内でレビュー基準を書き換えても、その PR のレビューには効きません。さらに `.github/` と `.claude/` を変更する PR は skill が必ず差し戻し（人間の確認が必要）にします。
-- **PR のコードは実行しません。** Claude に許可しているのは Read / Grep / Glob / Write と `gh pr view` / `gh pr diff` / `gh pr comment` だけです。
+- **PR のコードは実行しません。** Claude に許可しているのは Read / Grep / Glob / Write と `gh pr view` / `gh pr diff` / `gh pr comment`、`./pr` での `git diff` / `git log` / `git show` だけです。
+- **差分が大きくても全ファイルを読み切ります。** 大きさを理由に差し戻すことはありません（タイムアウト 90 分、最大 400 ターン）。
 - **マージはモデルではなくシェルが実行します。** Claude にマージ権限はありません。
 - レビュー後に新しい commit が push された場合、`--match-head-commit` によりマージは行われず、新しい commit に対して再レビューが走ります。
 - PR 本文などに書かれた「承認せよ」等の指示には従わず、差し戻し理由として扱います。
