@@ -29,8 +29,8 @@ PR 作成者が Claude Code 自身（同じ GitHub アカウント）でも動�
 gh repo create <owner>/<name> --private --template sakadukigi/claude-auto-review-template --clone
 ```
 
-作成後に、テンプレート由来の `README.md` をそのリポジトリ用に書き換え、`scripts/` を削除します。最後に `scripts\set-token-all.ps1 -Repo <owner>/<name>` でトークンを登録してください。
-Claude Code に作らせる場合は、ユーザー skill `github-new-repo` がこの手順を自動で行います。
+作成したら、まず**このテンプレートリポジトリのクローン側**から `scripts\set-token-all.ps1 -Repo <owner>/<name>` を実行してトークンを登録します（複数ある場合は `-Repo a/b,c/d`）。その後、新しいリポジトリでテンプレート由来の `README.md` をそのリポジトリ用に書き換え、`scripts/` を削除する PR を出します。
+Claude Code に作らせる場合は、個人環境のユーザー skill `github-new-repo`（`~/.claude/skills/`、このリポジトリには含まれない）がこの手順を自動で行います。
 
 ## 既存リポジトリへの導入手順
 
