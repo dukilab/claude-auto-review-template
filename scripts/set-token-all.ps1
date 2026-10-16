@@ -52,8 +52,14 @@ if (-not $token) {
     Write-Host "トークンを暗号化して保存しました。"
 }
 $token = ($token -replace '\s', '')
+if (-not $token.StartsWith("sk-ant-oat")) {
+    Write-Host "保存済みトークンの形式が不正です。-ResetToken を付けて実行し、入力し直してください。" -ForegroundColor Red
+    exit 1
+}
 
 # --- 対象リポジトリ ---
+# powershell -File 経由だと "a/b,c/d" が 1 つの文字列で渡るので分割する
+$Repo = @($Repo | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if ($Repo.Count -gt 0) {
     $repos = $Repo
 } else {
