@@ -12,15 +12,20 @@ PR 作成者が Claude Code 自身（同じ GitHub アカウント）でも動�
 
 ## 構成
 
-| ファイル | 役割 |
-|---|---|
-| `.github/workflows/claude-auto-review.yml` | PR イベントで起動し、Claude にレビューさせ、判定に応じてマージする |
-| `.claude/skills/pr-auto-review/SKILL.md` | レビュー手順・判定基準・コメント形式（Claude が読む） |
+処理本体とレビュー手順は **このリポジトリに一元化** されています。各リポジトリには呼び出し用のファイルを 1 つ置くだけです。
+
+| ファイル | 置き場所 | 役割 |
+|---|---|---|
+| `.github/workflows/review.yml` | このリポジトリだけ | 再利用可能なワークフロー本体。Claude にレビューさせ、判定に応じてマージする |
+| `.claude/skills/pr-auto-review/SKILL.md` | このリポジトリだけ | レビュー手順・判定基準・コメント形式（Claude が読む） |
+| `.github/workflows/claude-auto-review.yml` | 各リポジトリ | PR イベントで起動し、上の `review.yml@main` を呼び出すだけ |
+
+レビュー手順やワークフローを直すときは、このリポジトリの `main` を更新すれば全リポジトリに反映されます。各リポジトリへ配り直す必要はありません。
 
 処理の流れ:
 
-1. `pull_request_target` で起動（draft とフォークからの PR は対象外）
-2. default ブランチ（レビュー手順の skill）を作業ディレクトリに、PR の head を `./pr` にチェックアウト
+1. 各リポジトリの `claude-auto-review.yml` が `pull_request_target` で起動し、`review.yml@main` を呼び出す（draft とフォークからの PR は対象外）
+2. このリポジトリ（レビュー手順）を作業ディレクトリに、PR の head を `./pr` にチェックアウト
 3. Claude Code（`claude-opus-5-5`）が SKILL.md に従ってレビューし、`review-verdict.json` を書いて PR にコメント
 4. シェルステップが `review-verdict.json` を読み、`approve` なら `gh pr merge --squash`、`changes_suggested` / `reject` ならジョブ失敗
 
@@ -32,12 +37,14 @@ PR 作成者が Claude Code 自身（同じ GitHub アカウント）でも動�
 gh repo create <owner>/<name> --private --template sakadukigi/claude-auto-review-template --clone
 ```
 
+テンプレートから作ったリポジトリには `review.yml` と `.claude/skills/pr-auto-review/` のコピーも入りますが、実際の処理は常にこのリポジトリのものが使われます（コピーはローカルで `/pr-auto-review` を使うためのもので、消さなくて構いません）。
+
 作成したら、まず**このテンプレートリポジトリのクローン側**から `scripts\set-token-all.ps1 -Repo <owner>/<name>` を実行してトークンを登録します（複数ある場合は `-Repo a/b,c/d`）。その後、新しいリポジトリでテンプレート由来の `README.md` をそのリポジトリ用に書き換え、`scripts/` を削除する PR を出します。
 Claude Code に作らせる場合は、個人環境のユーザー skill `github-new-repo`（`~/.claude/skills/`、このリポジトリには含まれない）がこの手順を自動で行います。
 
 ## 既存リポジトリへの導入手順
 
-1. **2 つのファイルを対象リポジトリの default ブランチにコピー**してコミット
+1. **`.github/workflows/claude-auto-review.yml`（呼び出し用）を対象リポジトリの default ブランチにコピー**してコミット
    （`pull_request_target` は default ブランチ側のワークフローを使うため、default ブランチに入るまで動きません）
    シークレットが未登録の間は、ワークフローは警告を出してスキップします（失敗にもコメントにもなりません）。
 2. **OAuth トークンを作成**（Claude Pro/Max サブスクを使用）
@@ -66,8 +73,7 @@ Claude Code に作らせる場合は、個人環境のユーザー skill `github
 
    初回だけトークンの入力を求められます（画面には表示されません）。入力したトークンは Windows のユーザー専用暗号化（DPAPI）で `%APPDATA%\claude-auto-review\oauth-token.xml` に保存され、2 回目以降は入力なしで登録できます。トークンを作り直したときは `-ResetToken` を付けて実行します。ワークフローが入っているリポジトリだけに登録します。
 
-4. **Actions の権限設定**: Settings → Actions → General → Workflow permissions を「Read and write permissions」にする
-5. （任意）Settings → General → Pull Requests の **Allow auto-merge** を ON にすると、他の必須チェック（CI 等）の完了を待ってからマージします。OFF の場合はレビュー OK の時点で即マージします。
+4. （任意）Settings → General → Pull Requests の **Allow auto-merge** を ON にすると、他の必須チェック（CI 等）の完了を待ってからマージします。OFF の場合はレビュー OK の時点で即マージします。
 
 ## ブランチ保護との組み合わせ
 
@@ -76,7 +82,7 @@ Claude Code に作らせる場合は、個人環境のユーザー skill `github
 
 ## 安全のための設計
 
-- **ワークフローと skill は常に default ブランチ側を使う**ので、PR の base が別ブランチ（例: default が `master` で PR は `main` 向け）でも同じ手順でレビューされます。また、PR 内でレビュー基準を書き換えても、その PR のレビューには効きません。さらに `.github/` と `.claude/` を変更する PR は skill が必ず差し戻し（人間の確認が必要）にします。
+- **ワークフロー本体とレビュー手順は常にこのリポジトリのものを使う**ので、PR の base がどのブランチでも同じ手順でレビューされます。また、各リポジトリの PR でレビュー基準を書き換えることはできません（呼び出し用ファイルも `pull_request_target` により default ブランチ側が使われます）。さらに `.github/` と `.claude/` を変更する PR は skill が必ず差し戻し（人間の確認が必要）にします。
 - **PR のコードは実行しません。** Claude に許可しているのは Read / Grep / Glob / Write と `gh pr view` / `gh pr diff` / `gh pr comment`、`./pr` での `git diff` / `git log` / `git show` だけです。
 - **差分が大きくても全ファイルを読み切ります。** 大きさを理由に差し戻すことはありません（タイムアウト 90 分、最大 400 ターン）。
 - **マージはモデルではなくシェルが実行します。** Claude にマージ権限はありません。
@@ -85,10 +91,12 @@ Claude Code に作らせる場合は、個人環境のユーザー skill `github
 
 ## カスタマイズ
 
+いずれもこのリポジトリで変更すると、全リポジトリに反映されます。
+
 - **判定基準**: `.claude/skills/pr-auto-review/SKILL.md` の「即 reject にする条件」「レビュー観点」「severity」を編集
-- **モデル**: ワークフローの `env.CLAUDE_MODEL`
-- **マージ方法**: `Decide and merge` ステップの `--squash` を `--merge` / `--rebase` に変更
-- **マージ後に main への push ワークフローを動かしたい場合**: `GITHUB_TOKEN` で行ったマージは他のワークフローを起動しません。`Decide and merge` ステップの `GH_TOKEN` を PAT または GitHub App のトークンに置き換えてください。
+- **モデル**: `review.yml` の `env.CLAUDE_MODEL`
+- **マージ方法**: `review.yml` の `Decide and merge` ステップの `--squash` を `--merge` / `--rebase` に変更
+- **マージ後に main への push ワークフローを動かしたい場合**: `GITHUB_TOKEN` で行ったマージは他のワークフローを起動しません。`review.yml` の `Decide and merge` ステップの `GH_TOKEN` を PAT または GitHub App のトークンに置き換えてください。
 
 ## ローカルでの利用
 
