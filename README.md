@@ -20,7 +20,7 @@ PR 作成者が Claude Code 自身（同じ GitHub アカウント）でも動�
 処理の流れ:
 
 1. `pull_request_target` で起動（draft とフォークからの PR は対象外）
-2. base ブランチを作業ディレクトリに、PR の head を `./pr` にチェックアウト
+2. default ブランチ（レビュー手順の skill）を作業ディレクトリに、PR の head を `./pr` にチェックアウト
 3. Claude Code（`claude-opus-5-5`）が SKILL.md に従ってレビューし、`review-verdict.json` を書いて PR にコメント
 4. シェルステップが `review-verdict.json` を読み、`approve` なら `gh pr merge --squash`、`changes_suggested` / `reject` ならジョブ失敗
 
@@ -76,7 +76,7 @@ Claude Code に作らせる場合は、個人環境のユーザー skill `github
 
 ## 安全のための設計
 
-- **ワークフローと skill は常に base ブランチ側を使う**ので、PR 内でレビュー基準を書き換えても、その PR のレビューには効きません。さらに `.github/` と `.claude/` を変更する PR は skill が必ず差し戻し（人間の確認が必要）にします。
+- **ワークフローと skill は常に default ブランチ側を使う**ので、PR の base が別ブランチ（例: default が `master` で PR は `main` 向け）でも同じ手順でレビューされます。また、PR 内でレビュー基準を書き換えても、その PR のレビューには効きません。さらに `.github/` と `.claude/` を変更する PR は skill が必ず差し戻し（人間の確認が必要）にします。
 - **PR のコードは実行しません。** Claude に許可しているのは Read / Grep / Glob / Write と `gh pr view` / `gh pr diff` / `gh pr comment`、`./pr` での `git diff` / `git log` / `git show` だけです。
 - **差分が大きくても全ファイルを読み切ります。** 大きさを理由に差し戻すことはありません（タイムアウト 90 分、最大 400 ターン）。
 - **マージはモデルではなくシェルが実行します。** Claude にマージ権限はありません。
