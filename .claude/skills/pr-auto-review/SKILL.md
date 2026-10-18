@@ -20,6 +20,8 @@ PR を 1 件レビューし、**判定ファイル `review-verdict.json` の出�
 
 ### 1. 情報を集める
 
+ベースブランチとのコンフリクトは、ワークフローがこの手順の前に判定して差し戻している（コンフリクトがある PR はここまで来ない）。
+
 ```bash
 gh pr view <N> --json number,title,body,author,baseRefName,headRefName,files,commits,additions,deletions
 gh pr view <N> --json comments

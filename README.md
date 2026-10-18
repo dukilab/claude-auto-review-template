@@ -5,6 +5,7 @@ PR が作成・更新されると Claude Opus 5.5 がレビューし、
 - **✅ 承認**（指摘ゼロ）→ 結果をコメントして squash マージ（ブランチ削除）
 - **🔧 改善提案あり**（軽微な指摘のみ）→ 提案をコメントし、チェックを失敗にする（マージしない）
 - **❌ 差し戻し**（バグ・セキュリティ・テスト不足など）→ 理由と修正方針をコメントし、チェックを失敗にする（マージしない）
+- **❌ 差し戻し（コンフリクト）**（ベースブランチの最新とコンフリクト）→ Claude のレビュー前に判定し、コンフリクトしているファイルと解消方法をコメントする（マージしない・Claude の使用量もかからない）
 
 🔧 / ❌ の場合は、PR 作成者（Claude Code など）が指摘に沿って直して同じブランチに push すると自動で再レビューされ、指摘がなくなった時点でマージされます。
 
@@ -26,8 +27,9 @@ PR 作成者が Claude Code 自身（同じ GitHub アカウント）でも動�
 
 1. 各リポジトリの `claude-auto-review.yml` が `pull_request_target` で起動し、`review.yml@main` を呼び出す（draft とフォークからの PR は対象外）
 2. このリポジトリ（レビュー手順）を作業ディレクトリに、PR の head を `./pr` にチェックアウト
-3. Claude Code（`claude-opus-5-5`）が SKILL.md に従ってレビューし、`review-verdict.json` を書いて PR にコメント
-4. シェルステップが `review-verdict.json` を読み、`approve` なら `gh pr merge --squash`、`changes_suggested` / `reject` ならジョブ失敗
+3. `git merge-tree` で PR の head とベースブランチの最新をマージしてみて、コンフリクトがあればコメントして終了（Claude は呼ばない）
+4. Claude Code（`claude-opus-5-5`）が SKILL.md に従ってレビューし、`review-verdict.json` を書いて PR にコメント
+5. シェルステップが `review-verdict.json` を読み、`approve` なら `gh pr merge --squash`、`changes_suggested` / `reject` ならジョブ失敗
 
 ## 新しいリポジトリを作る場合
 

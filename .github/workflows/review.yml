@@ -50,16 +50,65 @@ jobs:
           fetch-depth: 0  # base との差分をファイル単位で読むため
           persist-credentials: false
 
+      - name: Check merge conflicts
+        # ベースブランチの最新と実際にマージしてみて、コンフリクトがあれば Claude を呼ばずに差し戻す
+        id: conflict
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -uo pipefail
+          base="origin/$BASE_REF"
+          git -C pr rev-parse --verify -q "$base" >/dev/null || base="$BASE_SHA"
+          out=$(git -C pr merge-tree --write-tree --name-only --no-messages "$base" "$HEAD_SHA"); rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "コンフリクトなし（$base）"
+            exit 0
+          fi
+          if [ "$rc" -ne 1 ]; then
+            echo "::warning::コンフリクトの判定に失敗しました（exit $rc）。レビューは続行します"
+            exit 0
+          fi
+          echo "conflict=true" >> "$GITHUB_OUTPUT"
+          # 1 行目は tree の ID、2 行目以降がコンフリクトしたファイル
+          files=$(printf '%s\n' "$out" | tail -n +2 | sed '/^$/d' | sort -u)
+          bt='`'
+          {
+            echo '<!-- claude-auto-review -->'
+            echo '## ❌ 自動レビュー: 差し戻し（コンフリクト）'
+            echo
+            echo "ベースブランチ ${bt}${BASE_REF}${bt} の最新とコンフリクトしているため、レビューせずに差し戻します。"
+            echo
+            echo '### コンフリクトしているファイル'
+            printf '%s\n' "$files" | sed "s/^/- ${bt}/; s/\$/${bt}/"
+            echo
+            echo '### 解消方法'
+            echo 'ベースブランチを取り込んでコンフリクトを解消し、同じブランチに push してください。push すると自動で再レビューされます。'
+            echo
+            echo "${bt}${bt}${bt}bash"
+            echo 'git fetch origin'
+            echo "git merge origin/${BASE_REF}   # rebase する場合は git rebase origin/${BASE_REF}"
+            echo '# コンフリクトを解消して commit'
+            echo 'git push                    # rebase した場合は git push --force-with-lease'
+            echo "${bt}${bt}${bt}"
+            echo
+            echo '> PR を作成したのが Claude Code の場合は、上記の手順でコンフリクトを解消し、両方の変更の意図を保ったまま同じブランチに push してください。'
+          } > conflict-comment.md
+          gh pr comment "$PR_NUMBER" --body-file conflict-comment.md
+          echo "::error::ベースブランチ $BASE_REF とコンフリクトしています"
+
       - name: Setup Node.js
+        if: steps.conflict.outputs.conflict != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Install Claude Code
+        if: steps.conflict.outputs.conflict != 'true'
         run: npm install -g @anthropic-ai/claude-code
 
       - name: Run review with Claude
         id: claude
+        if: steps.conflict.outputs.conflict != 'true'
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
@@ -95,7 +144,7 @@ jobs:
 
       - name: Decide and merge
         # Claude の実行が失敗しても「判定できなかった」とコメントするために実行する
-        if: ${{ !cancelled() && steps.claude.outputs.skip != 'true' }}
+        if: ${{ !cancelled() && steps.conflict.outputs.conflict != 'true' && steps.claude.outputs.skip != 'true' }}
         run: |
           set -euo pipefail
 
@@ -129,3 +178,7 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Fail on conflict
+        if: steps.conflict.outputs.conflict == 'true'
+        run: exit 1
