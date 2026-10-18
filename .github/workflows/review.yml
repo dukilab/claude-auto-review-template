@@ -59,7 +59,9 @@ jobs:
           set -uo pipefail
           base="origin/$BASE_REF"
           git -C pr rev-parse --verify -q "$base" >/dev/null || base="$BASE_SHA"
-          out=$(git -C pr merge-tree --write-tree --name-only --no-messages "$base" "$HEAD_SHA"); rc=$?
+          # Actions は bash -e で動くので、終了コード 1（コンフリクトあり）で止まらないように受け取る
+          rc=0
+          out=$(git -C pr merge-tree --write-tree --name-only --no-messages "$base" "$HEAD_SHA") || rc=$?
           if [ "$rc" -eq 0 ]; then
             echo "コンフリクトなし（$base）"
             exit 0
