@@ -1,7 +1,7 @@
 name: Claude Auto Review
 
 # PR を Claude Opus 5.5 が自動レビューし、指摘ゼロなら squash マージ、改善提案や問題があれば理由をコメントする。
-# 処理本体とレビュー手順は sakadukigi/claude-auto-review-template に一元化されている（このファイルは呼び出すだけ）。
+# 処理本体とレビュー手順は dukilab/claude-auto-review-template に一元化されている（このファイルは呼び出すだけ）。
 # 動作にはリポジトリシークレット CLAUDE_CODE_OAUTH_TOKEN が必要（未登録ならスキップ）。
 
 on:
@@ -19,6 +19,6 @@ permissions:
 
 jobs:
   review:
-    uses: sakadukigi/claude-auto-review-template/.github/workflows/review.yml@main
+    uses: dukilab/claude-auto-review-template/.github/workflows/review.yml@main
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

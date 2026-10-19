@@ -1,7 +1,7 @@
 name: Claude Auto Review (reusable)
 
 # 再利用可能なワークフロー本体。各リポジトリの .github/workflows/claude-auto-review.yml から
-#   uses: sakadukigi/claude-auto-review-template/.github/workflows/review.yml@main
+#   uses: dukilab/claude-auto-review-template/.github/workflows/review.yml@main
 # で呼び出される。PR を Claude Opus 5.5 がレビューし、指摘ゼロなら squash マージ、
 # 改善提案や問題があれば理由をコメントする（マージしない）。
 #
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout review procedure (this template, trusted)
         uses: actions/checkout@v4
         with:
-          repository: sakadukigi/claude-auto-review-template
+          repository: dukilab/claude-auto-review-template
           ref: ${{ github.job_workflow_sha || 'main' }}
           persist-credentials: false
 
