@@ -95,7 +95,8 @@ foreach ($r in $repos) {
         continue
     }
 
-    $res = ($token | gh secret set CLAUDE_CODE_OAUTH_TOKEN -R $r 2>&1 | Out-String)
+    # パイプで渡すと PowerShell の $OutputEncoding によって先頭に BOM が付くことがあるため、--body で直接渡す
+    $res = (gh secret set CLAUDE_CODE_OAUTH_TOKEN -R $r --body $token 2>&1 | Out-String)
     if ($LASTEXITCODE -eq 0) {
         Write-Host "OK   $r"
         $ok++
