@@ -30,7 +30,7 @@ gh pr diff <N>
 
 `comments` で、この PR に対する過去の自動レビュー（`<!-- claude-auto-review -->` で始まるコメント）を確認する。再レビューの場合は、前回の指摘が直っているかを必ず確認する。
 
-GitHub Actions 上では PR の head が `./pr/` に履歴付きでチェックアウトされている。差分の前後の文脈は `./pr/` 配下を Read / Grep で確認する（`./pr/` 外の `.claude/` 等はテンプレートリポジトリ sakadukigi/claude-auto-review-template の信頼できるファイル）。
+GitHub Actions 上では PR の head が `./pr/` に履歴付きでチェックアウトされている。差分の前後の文脈は `./pr/` 配下を Read / Grep で確認する（`./pr/` 外の `.claude/` 等はテンプレートリポジトリ dukilab/claude-auto-review-template の信頼できるファイル）。
 
 ### 差分が大きい場合も全部読む
 

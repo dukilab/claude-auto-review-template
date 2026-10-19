@@ -36,7 +36,7 @@ PR 作成者が Claude Code 自身（同じ GitHub アカウント）でも動�
 このリポジトリは GitHub のテンプレートリポジトリです。新しいリポジトリは、このテンプレートから作ると最初から自動レビューが入った状態になります。
 
 ```bash
-gh repo create <owner>/<name> --private --template sakadukigi/claude-auto-review-template --clone
+gh repo create <owner>/<name> --private --template dukilab/claude-auto-review-template --clone
 ```
 
 テンプレートから作ったリポジトリには `review.yml` と `.claude/skills/pr-auto-review/` のコピーも入りますが、実際の処理は常にこのリポジトリのものが使われます（コピーはローカルで `/pr-auto-review` を使うためのもので、消さなくて構いません）。
