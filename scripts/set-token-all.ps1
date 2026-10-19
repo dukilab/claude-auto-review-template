@@ -80,6 +80,13 @@ if ($Repo.Count -gt 0) {
     }
 }
 
+# Windows PowerShell 5.1 はコンソールが UTF-8 の時、native コマンドへのパイプの先頭に BOM を付ける。
+# $OutputEncoding だけでは防げないため、コンソールの入力エンコーディングも BOM なし UTF-8 にする（最後に元に戻す）。
+$noBom = New-Object System.Text.UTF8Encoding $false
+$origInputEncoding = [Console]::InputEncoding
+[Console]::InputEncoding = $noBom
+$OutputEncoding = $noBom
+
 $ok = 0; $skipped = 0; $failed = @()
 foreach ($r in $repos) {
     # 自動レビューのワークフローが入っているリポジトリだけ対象（404 は対象外、それ以外の失敗は FAIL）
@@ -95,6 +102,7 @@ foreach ($r in $repos) {
         continue
     }
 
+    # BOM なし UTF-8 にしてからパイプ（標準入力）で渡す（--body だとコマンドラインに残るため使わない）
     $res = ($token | gh secret set CLAUDE_CODE_OAUTH_TOKEN -R $r 2>&1 | Out-String)
     if ($LASTEXITCODE -eq 0) {
         Write-Host "OK   $r"
@@ -106,6 +114,7 @@ foreach ($r in $repos) {
 }
 
 $token = $null
+[Console]::InputEncoding = $origInputEncoding
 Write-Host ""
 Write-Host "登録: $ok 件 / 対象外: $skipped 件 / 失敗: $($failed.Count) 件"
 if ($failed.Count -gt 0) {
