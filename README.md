@@ -82,6 +82,31 @@ Claude Code に作らせる場合は、個人環境のユーザー skill `github
 - 「Require a pull request before merging」の **Require approvals を ON にすると自動マージできません**（承認レビューを出さない方式のため）。
 - 代わりに、この `review` ジョブ（`Claude Auto Review / review`）を **Required status checks** に指定すると、人がマージボタンを押す場合も自動レビューの通過が必須になります。
 
+## 承認のあと CI の合格を待ってからマージする（任意）
+
+private リポジトリは、無料プランだとブランチ保護と ruleset が使えず、Allow auto-merge も効きません。そのため、承認が CI（check）より先に出ると、CI を待たずに即マージされます。これを避けるには、呼び出し用の `claude-auto-review.yml` で入力 `wait-for-workflow` に CI のワークフロー名を渡します。
+
+```yaml
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read         # CI の実行状態を読む
+
+jobs:
+  review:
+    uses: dukilab/claude-auto-review-template/.github/workflows/review.yml@main
+    with:
+      wait-for-workflow: Check   # PR の head と同じ commit で動いた "Check" ワークフローを待つ
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
+
+- 承認のあと、`scripts/wait-for-check.sh` が、PR の head と同じ commit の `pull_request` で起きた指定の名前のワークフローの実行を探して待ちます。実行が現れるまで 5 分、終わるまで 45 分です。
+- `success` ならマージします。失敗・取り消し・時間切れ・実行が見つからない・状態を取得できない場合は、マージせず PR にコメントして、ジョブを失敗にします。直して push すると再レビューされます。CI だけを再実行して通した場合は、`Claude Auto Review` を再実行してください。
+- `wait-for-workflow` を渡さないリポジトリ（既定）は、今までどおりに動きます。
+- 待っている間も review ジョブは動き続けます（ジョブ全体のタイムアウトは 90 分）。
+
 ## 安全のための設計
 
 - **ワークフロー本体とレビュー手順は常にこのリポジトリのものを使う**ので、PR の base がどのブランチでも同じ手順でレビューされます。また、各リポジトリの PR でレビュー基準を書き換えることはできません（呼び出し用ファイルも `pull_request_target` により default ブランチ側が使われます）。さらに `.github/` と `.claude/` を変更する PR は skill が必ず差し戻し（人間の確認が必要）にします。
