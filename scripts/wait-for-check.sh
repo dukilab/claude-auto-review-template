@@ -10,7 +10,6 @@ set -uo pipefail
 
 name="${WAIT_FOR_WORKFLOW:?WAIT_FOR_WORKFLOW が空です}"
 export WAIT_FOR_WORKFLOW
-export WAIT_FOR_WORKFLOW
 start_limit="${WAIT_START_SECONDS:-300}"
 done_limit="${WAIT_DONE_SECONDS:-2700}"
 poll="${POLL_SECONDS:-20}"
@@ -37,15 +36,18 @@ latest() {
     | if . == null then "none" else "\(.status) \(.conclusion // "-") \(.html_url)" end'
 }
 
+errfile=$(mktemp)
+trap 'rm -f "$errfile"' EXIT
 begin=$(date +%s)
 seen_at=""
 api_errors=0
 while true; do
-  if out=$(latest 2>&1); then
+  # stdout だけを結果として読む。stderr は別のファイルに分け、エラーのときの表示にだけ使う
+  if out=$(latest 2>"$errfile"); then
     api_errors=0
   else
     api_errors=$((api_errors + 1))
-    say "::warning::Actions の実行一覧を取得できませんでした（${api_errors} 回目）: $(printf '%s' "$out" | head -c 200)"
+    say "::warning::Actions の実行一覧を取得できませんでした（${api_errors} 回目）: $(head -c 200 "$errfile")"
     if [ "$api_errors" -ge 5 ]; then
       comment "同じ commit の ${name} ワークフローの状態を取得できなかったため、マージしませんでした。呼び出し用のワークフローのトークンに \`actions: read\` があるか確認してください。"
       exit 1
