@@ -12,6 +12,15 @@ name: Claude Auto Review (reusable)
 
 on:
   workflow_call:
+    inputs:
+      wait-for-workflow:
+        description: >-
+          承認のあと、PR の head と同じ commit のこの名前のワークフロー（CI）が success になるまでマージを待つ。
+          失敗・取り消し・見つからない場合はマージせずコメントする。空なら待たずに今までどおりマージする。
+          呼び出し元のトークンに actions: read が要る。
+        type: string
+        required: false
+        default: ''
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN:
         required: false
@@ -34,6 +43,7 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      WAIT_FOR_WORKFLOW: ${{ inputs.wait-for-workflow }}
     steps:
       - name: Checkout review procedure (this template, trusted)
         uses: actions/checkout@v4
@@ -161,6 +171,10 @@ jobs:
 
           case "$verdict" in
             approve)
+              # wait-for-workflow が指定されていれば、同じ commit の CI が success になるまで待つ（成功以外はマージしない）
+              if [ -n "$WAIT_FOR_WORKFLOW" ]; then
+                bash scripts/wait-for-check.sh || { echo "::error::$WAIT_FOR_WORKFLOW が success にならなかったためマージしません"; exit 1; }
+              fi
               # レビューした commit のままの時だけマージする（レビュー後に push されていたら失敗する）。
               # リポジトリで auto-merge が有効なら必須チェックの完了を待つ。無効なら即時マージ。
               if ! gh pr merge "$PR_NUMBER" --squash --delete-branch --auto --match-head-commit "$HEAD_SHA"; then
